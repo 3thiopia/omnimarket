@@ -21,7 +21,7 @@ export default function App() {
   const [isPostAdOpen, setIsPostAdOpen] = useState(false);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedProduct, setSelectedProduct] = useState<Listing | null>(null);
   const [isAdminView, setIsAdminView] = useState(false);
   const [listings, setListings] = useState<Listing[]>([]);
@@ -575,10 +575,6 @@ export default function App() {
 
         {/* Categories */}
         <section className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em]">Categories</h2>
-            <div className="h-[1px] flex-1 bg-gray-200 ml-4" />
-          </div>
           <CategoryBar 
             selectedId={selectedCategory} 
             onSelect={(id) => {

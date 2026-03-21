@@ -30,7 +30,7 @@ export interface Listing {
   sellerName?: string;
   seller_id?: string;
   postedAt?: string;
-  status?: 'active' | 'sold' | 'pending' | 'rejected';
+  status?: 'active' | 'sold' | 'pending';
   isFavorited?: boolean;
 }
 
@@ -49,10 +49,7 @@ export interface UserProfile {
   email: string;
   avatar_url?: string;
   phone?: string;
-  location?: string;
   role: string;
-  status?: string;
-  created_at?: string;
 }
 
 export interface Report {
@@ -92,49 +89,43 @@ export interface Review {
 
 let categoriesCache: Category[] | null = null;
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
 export const api = {
   categories: {
     getAll: async (): Promise<Category[]> => {
       // Try memory cache first
       if (categoriesCache) return categoriesCache;
       
-      const response = await fetch('/api/categories');
+      const response = await fetch(`${API_BASE_URL}/api/categories`);
       if (!response.ok) throw new Error('Failed to fetch categories');
       
       const data = await response.json();
       categoriesCache = data;
       return data;
     },
-    create: async (name: string, icon: string, parent_id?: string): Promise<Category> => {
-      const response = await fetch('/api/categories', {
+    create: async (name: string, icon: string): Promise<Category> => {
+      const response = await fetch(`${API_BASE_URL}/api/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, icon, parent_id }),
+        body: JSON.stringify({ name, icon }),
       });
       if (!response.ok) throw new Error('Failed to create category');
       categoriesCache = null; // Invalidate cache
       return response.json();
     },
     delete: async (id: string): Promise<void> => {
-      const response = await fetch(`/api/categories/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete category');
       categoriesCache = null; // Invalidate cache
     },
     seed: async (): Promise<any> => {
-      const response = await fetch('/api/categories/seed', {
+      const response = await fetch(`${API_BASE_URL}/api/categories/seed`, {
         method: 'POST',
       });
       if (!response.ok) throw new Error('Failed to seed categories');
-      categoriesCache = null; // Invalidate cache
-      return response.json();
-    },
-    syncCounts: async (): Promise<any> => {
-      const response = await fetch('/api/categories/sync-counts', {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Failed to sync category counts');
       categoriesCache = null; // Invalidate cache
       return response.json();
     },
@@ -162,7 +153,7 @@ export const api = {
       if (params?.max_price) queryParams.append('max_price', params.max_price.toString());
       if (params?.location) queryParams.append('location', params.location);
       
-      const url = `/api/listings${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const url = `${API_BASE_URL}/api/listings${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       const response = await fetch(url, {
         headers: {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -179,7 +170,7 @@ export const api = {
       }));
     },
     getById: async (id: string | number, token?: string): Promise<Listing | null> => {
-      const response = await fetch(`/api/listings/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/listings/${id}`, {
         headers: {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         }
@@ -193,7 +184,7 @@ export const api = {
       };
     },
     create: async (listing: Omit<Listing, 'id'>, token?: string): Promise<Listing> => {
-      const response = await fetch('/api/listings', {
+      const response = await fetch(`${API_BASE_URL}/api/listings`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -213,7 +204,7 @@ export const api = {
       };
     },
     update: async (id: string | number, updates: Partial<Listing>, token?: string): Promise<Listing> => {
-      const response = await fetch(`/api/listings/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/listings/${id}`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
@@ -233,14 +224,14 @@ export const api = {
       };
     },
     delete: async (id: string | number, token: string): Promise<void> => {
-      const response = await fetch(`/api/listings/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/listings/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to delete listing');
     },
     toggleFavorite: async (listingId: string | number, token: string): Promise<{ favorited: boolean }> => {
-      const response = await fetch(`/api/listings/${listingId}/favorite`, {
+      const response = await fetch(`${API_BASE_URL}/api/listings/${listingId}/favorite`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -248,7 +239,7 @@ export const api = {
       return response.json();
     },
     getFavorites: async (token: string): Promise<Listing[]> => {
-      const response = await fetch('/api/listings/favorites', {
+      const response = await fetch(`${API_BASE_URL}/api/listings/favorites`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch favorites');
@@ -262,36 +253,26 @@ export const api = {
   },
   stats: {
     getAll: async (): Promise<Stat[]> => {
-      const response = await fetch('/api/stats');
+      const response = await fetch(`${API_BASE_URL}/api/stats`);
       if (!response.ok) throw new Error('Failed to fetch stats');
       return response.json();
     },
   },
   users: {
     getMe: async (token: string): Promise<UserProfile> => {
-      const response = await fetch('/api/users/me', {
+      const response = await fetch(`${API_BASE_URL}/api/users/me`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch profile');
       return response.json();
     },
-    getAll: async (token: string): Promise<UserProfile[]> => {
-      const response = await fetch('/api/users', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to fetch users' }));
-        throw new Error(errorData.error || 'Failed to fetch users');
-      }
-      return response.json();
-    },
     getById: async (id: string): Promise<UserProfile> => {
-      const response = await fetch(`/api/users/${id}`);
+      const response = await fetch(`${API_BASE_URL}/api/users/${id}`);
       if (!response.ok) throw new Error('Failed to fetch user');
       return response.json();
     },
     updateMe: async (profile: Partial<UserProfile>, token: string): Promise<UserProfile> => {
-      const response = await fetch('/api/users/me', {
+      const response = await fetch(`${API_BASE_URL}/api/users/me`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -303,28 +284,14 @@ export const api = {
       return response.json();
     },
     deleteMe: async (token: string): Promise<void> => {
-      const response = await fetch('/api/users/me', {
+      const response = await fetch(`${API_BASE_URL}/api/users/me`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to delete account');
     },
-    uploadAvatar: async (file: File, token: string): Promise<UserProfile> => {
-      const formData = new FormData();
-      formData.append('avatar', file);
-
-      const response = await fetch('/api/users/upload-avatar', {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}` 
-        },
-        body: formData,
-      });
-      if (!response.ok) throw new Error('Failed to upload avatar');
-      return response.json();
-    },
     updateStatus: async (id: string, status: string, token: string): Promise<UserProfile> => {
-      const response = await fetch(`/api/users/${id}/status`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/${id}/status`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
@@ -338,28 +305,28 @@ export const api = {
   },
   chats: {
     getUnreadCount: async (token: string): Promise<{ count: number }> => {
-      const response = await fetch('/api/chats/unread-count', {
+      const response = await fetch(`${API_BASE_URL}/api/chats/unread-count`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch unread count');
       return response.json();
     },
     getConversations: async (token: string): Promise<any[]> => {
-      const response = await fetch('/api/chats/conversations', {
+      const response = await fetch(`${API_BASE_URL}/api/chats/conversations`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch conversations');
       return response.json();
     },
     getMessages: async (conversationId: string, token: string): Promise<any[]> => {
-      const response = await fetch(`/api/chats/conversations/${conversationId}/messages`, {
+      const response = await fetch(`${API_BASE_URL}/api/chats/conversations/${conversationId}/messages`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch messages');
       return response.json();
     },
     sendMessage: async (conversationId: string, content: string, token: string): Promise<any> => {
-      const response = await fetch(`/api/chats/conversations/${conversationId}/messages`, {
+      const response = await fetch(`${API_BASE_URL}/api/chats/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -371,7 +338,7 @@ export const api = {
       return response.json();
     },
     deleteMessage: async (messageId: string, token: string): Promise<any> => {
-      const response = await fetch(`/api/chats/messages/${messageId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/chats/messages/${messageId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -379,7 +346,7 @@ export const api = {
       return response.json();
     },
     createConversation: async (listingId: string | number, sellerId: string, token: string): Promise<any> => {
-      const response = await fetch('/api/chats/conversations', {
+      const response = await fetch(`${API_BASE_URL}/api/chats/conversations`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -396,7 +363,7 @@ export const api = {
   },
   reports: {
     create: async (report: { listing_id: string | number; reason: string; details?: string }, token: string): Promise<Report> => {
-      const response = await fetch('/api/reports', {
+      const response = await fetch(`${API_BASE_URL}/api/reports`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -411,7 +378,7 @@ export const api = {
       return response.json();
     },
     getAll: async (token: string): Promise<Report[]> => {
-      const response = await fetch('/api/reports', {
+      const response = await fetch(`${API_BASE_URL}/api/reports`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) {
@@ -421,7 +388,7 @@ export const api = {
       return response.json();
     },
     updateStatus: async (id: string, status: string, token: string): Promise<Report> => {
-      const response = await fetch(`/api/reports/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/reports/${id}`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
@@ -435,12 +402,12 @@ export const api = {
   },
   reviews: {
     getForSeller: async (sellerId: string): Promise<Review[]> => {
-      const response = await fetch(`/api/reviews/seller/${sellerId}`);
+      const response = await fetch(`${API_BASE_URL}/api/reviews/seller/${sellerId}`);
       if (!response.ok) throw new Error('Failed to fetch reviews');
       return response.json();
     },
     create: async (review: { seller_id: string; listing_id?: string | number; rating: number; comment?: string }, token: string): Promise<Review> => {
-      const response = await fetch('/api/reviews', {
+      const response = await fetch(`${API_BASE_URL}/api/reviews`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

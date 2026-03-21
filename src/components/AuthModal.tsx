@@ -1,8 +1,9 @@
 import { useState, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Mail, Lock, User, LogIn, UserPlus, AlertCircle } from 'lucide-react';
+import { X, Mail, Lock, User, LogIn, UserPlus, AlertCircle, MapPin } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
+import { ETHIOPIAN_LOCATIONS } from '../constants/locations';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -15,6 +16,8 @@ export const AuthModal = ({ isOpen, onClose, onSuccess }: AuthModalProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState('');
+  const [selectedSubRegion, setSelectedSubRegion] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,12 +34,17 @@ export const AuthModal = ({ isOpen, onClose, onSuccess }: AuthModalProps) => {
         });
         if (error) throw error;
       } else {
+        const locationString = selectedSubRegion 
+          ? `${selectedRegion}, ${selectedSubRegion}` 
+          : selectedRegion;
+
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
               full_name: fullName,
+              location: locationString,
             },
           },
         });
@@ -96,20 +104,77 @@ export const AuthModal = ({ isOpen, onClose, onSuccess }: AuthModalProps) => {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {!isLogin && (
-                  <div className="space-y-1">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-wider ml-1">Full Name</label>
-                    <div className="relative">
-                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        required
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="w-full bg-gray-50 border-2 border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl py-3 pl-12 pr-4 outline-none transition-all font-medium"
-                        placeholder="John Doe"
-                      />
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-wider ml-1">Full Name</label>
+                      <div className="relative">
+                        <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                          type="text"
+                          required
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          className="w-full bg-gray-50 border-2 border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl py-3 pl-12 pr-4 outline-none transition-all font-medium"
+                          placeholder="John Doe"
+                        />
+                      </div>
                     </div>
-                  </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-wider ml-1">Region</label>
+                      <div className="relative group">
+                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                        <select
+                          required
+                          className="w-full pl-12 pr-10 py-3 bg-gray-50 border-2 border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl outline-none transition-all font-medium appearance-none cursor-pointer"
+                          value={selectedRegion}
+                          onChange={(e) => {
+                            setSelectedRegion(e.target.value);
+                            setSelectedSubRegion('');
+                          }}
+                        >
+                          <option value="">Select Region</option>
+                          {ETHIOPIAN_LOCATIONS.map((loc) => (
+                            <option key={loc.name} value={loc.name}>
+                              {loc.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {selectedRegion && ETHIOPIAN_LOCATIONS.find(l => l.name === selectedRegion)?.subRegions && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-black text-gray-400 uppercase tracking-wider ml-1">Sub-Region / City</label>
+                        <div className="relative group">
+                          <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                          <select
+                            required
+                            className="w-full pl-12 pr-10 py-3 bg-gray-50 border-2 border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl outline-none transition-all font-medium appearance-none cursor-pointer"
+                            value={selectedSubRegion}
+                            onChange={(e) => setSelectedSubRegion(e.target.value)}
+                          >
+                            <option value="">Select Sub-Region / City</option>
+                            {ETHIOPIAN_LOCATIONS.find(l => l.name === selectedRegion)?.subRegions?.map((sub) => (
+                              <option key={sub} value={sub}>
+                                {sub}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div className="space-y-1">

@@ -25,7 +25,7 @@ import { getOptimizedImageUrl } from '../lib/imageUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import { Listing, User } from '../types';
-import { api, Category, Stat, Report } from '../services/api';
+import { api, Category, Stat, Report, UserProfile } from '../services/api';
 import { ConfirmationModal } from './ConfirmationModal';
 
 interface AdminDashboardProps {
@@ -48,10 +48,13 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryIcon, setNewCategoryIcon] = useState('📁');
+  const [newCategoryParentId, setNewCategoryParentId] = useState<string>('');
   const [stats, setStats] = useState<Stat[]>([]);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -79,6 +82,9 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
     if (activeTab === 'reports') {
       fetchReports();
     }
+    if (activeTab === 'users') {
+      fetchUsers();
+    }
   }, [activeTab]);
 
   const fetchReports = async () => {
@@ -92,6 +98,34 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
       console.error('Error loading reports:', error);
     } finally {
       setIsLoadingReports(false);
+    }
+  };
+
+  const fetchUsers = async () => {
+    setIsLoadingUsers(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const data = await api.users.getAll(session.access_token);
+      setUsers(data);
+    } catch (error: any) {
+      console.error('Error loading users:', error);
+      toast.error(error.message || 'Failed to load users');
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  const handleUpdateUserStatus = async (userId: string, status: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await api.users.updateStatus(userId, status, session.access_token);
+      toast.success(`User status updated to ${status}`);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      toast.error('Failed to update user status');
     }
   };
 
@@ -119,6 +153,7 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
           await api.users.updateStatus(userId, 'banned', session.access_token);
           toast.success('User has been banned successfully.');
           fetchReports();
+          fetchUsers();
         } catch (error) {
           console.error('Error banning user:', error);
           toast.error('Failed to ban user.');
@@ -167,9 +202,14 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
     try {
-      const newCat = await api.categories.create(newCategoryName, newCategoryIcon);
+      const newCat = await api.categories.create(
+        newCategoryName, 
+        newCategoryIcon, 
+        newCategoryParentId || undefined
+      );
       setCategories([...categories, newCat]);
       setNewCategoryName('');
+      setNewCategoryParentId('');
     } catch (error) {
       console.error('Error adding category:', error);
     }
@@ -207,15 +247,21 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
     });
   };
 
-  const handleMarkAsSold = async (id: string | number) => {
+  const handleUpdateStatus = async (id: string | number, status: Listing['status']) => {
     try {
-      const token = localStorage.getItem('supabase.auth.token');
-      await api.listings.update(id, { status: 'sold' }, token || undefined);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await api.listings.update(id, { status }, session.access_token);
+      toast.success(`Listing status updated to ${status}`);
       fetchListings();
     } catch (err) {
-      console.error('Error marking as sold:', err);
+      console.error('Error updating status:', err);
       toast.error('Failed to update listing status');
     }
+  };
+
+  const handleMarkAsSold = async (id: string | number) => {
+    handleUpdateStatus(id, 'sold');
   };
 
   const SidebarContent = () => (
@@ -477,11 +523,18 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
                       <div className="flex items-center justify-between pt-2 border-t border-gray-50">
                         <p className="text-[10px] font-medium text-gray-500">Seller: <span className="font-bold text-gray-700">{listing.sellerName || 'Verified Seller'}</span></p>
                         <div className="flex items-center gap-2">
-                          <button className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase transition-all active:scale-95">
+                          <button 
+                            onClick={() => handleUpdateStatus(listing.id, 'active')}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase transition-all active:scale-95"
+                          >
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             Approve
                           </button>
-                          <button className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                          <button 
+                            onClick={() => handleUpdateStatus(listing.id, 'rejected')}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Reject"
+                          >
                             <XCircle className="w-5 h-5" />
                           </button>
                         </div>
@@ -527,10 +580,18 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center justify-end gap-1">
-                              <button className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all" title="Approve">
+                              <button 
+                                onClick={() => handleUpdateStatus(listing.id, 'active')}
+                                className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all" 
+                                title="Approve"
+                              >
                                 <CheckCircle2 className="w-5 h-5" />
                               </button>
-                              <button className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Reject">
+                              <button 
+                                onClick={() => handleUpdateStatus(listing.id, 'rejected')}
+                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all" 
+                                title="Reject"
+                              >
                                 <XCircle className="w-5 h-5" />
                               </button>
                               <button className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-all">
@@ -600,7 +661,30 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
                         </div>
                       </div>
                       <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-50">
-                        {listing.status !== 'sold' && (
+                        {listing.status === 'pending' && (
+                          <button 
+                            onClick={() => handleUpdateStatus(listing.id, 'active')}
+                            className="px-3 py-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg text-[10px] font-bold uppercase transition-all"
+                          >
+                            Approve
+                          </button>
+                        )}
+                        {listing.status === 'active' && (
+                          <button 
+                            onClick={() => handleUpdateStatus(listing.id, 'rejected')}
+                            className="px-3 py-1.5 text-orange-600 hover:bg-orange-50 rounded-lg text-[10px] font-bold uppercase transition-all"
+                          >
+                            Unlist
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => listing.seller_id && handleBanUser(listing.seller_id)}
+                          className="px-3 py-1.5 text-red-700 hover:bg-red-50 rounded-lg text-[10px] font-bold uppercase transition-all"
+                          title="Ban Seller"
+                        >
+                          Ban User
+                        </button>
+                        {listing.status !== 'sold' && listing.status !== 'rejected' && (
                           <button 
                             onClick={() => handleMarkAsSold(listing.id)}
                             className="px-3 py-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg text-[10px] font-bold uppercase transition-all"
@@ -670,7 +754,32 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center justify-end gap-1">
-                              {listing.status !== 'sold' && (
+                              {listing.status === 'pending' && (
+                                <button 
+                                  onClick={() => handleUpdateStatus(listing.id, 'active')}
+                                  className="px-3 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all uppercase"
+                                  title="Approve"
+                                >
+                                  Approve
+                                </button>
+                              )}
+                              {listing.status === 'active' && (
+                                <button 
+                                  onClick={() => handleUpdateStatus(listing.id, 'rejected')}
+                                  className="px-3 py-1 text-xs font-bold text-orange-600 hover:bg-orange-50 rounded-lg transition-all uppercase"
+                                  title="Unlist"
+                                >
+                                  Unlist
+                                </button>
+                              )}
+                              <button 
+                                onClick={() => listing.seller_id && handleBanUser(listing.seller_id)}
+                                className="p-2 text-red-700 hover:bg-red-50 rounded-lg transition-all"
+                                title="Ban Seller"
+                              >
+                                <UserX className="w-5 h-5" />
+                              </button>
+                              {listing.status !== 'sold' && listing.status !== 'rejected' && (
                                 <button 
                                   onClick={() => handleMarkAsSold(listing.id)}
                                   className="px-3 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all uppercase"
@@ -708,6 +817,28 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
                 <h2 className="text-2xl lg:text-3xl font-black text-gray-900">Manage Categories</h2>
                 <div className="flex gap-2">
                   <button 
+                    onClick={() => {
+                      setConfirmModal({
+                        isOpen: true,
+                        title: 'Sync Category Counts',
+                        message: 'This will recalculate the number of active listings for each category. Continue?',
+                        type: 'info',
+                        onConfirm: async () => {
+                          try {
+                            await api.categories.syncCounts();
+                            fetchCategories();
+                          } catch (error) {
+                            console.error('Error syncing counts:', error);
+                          }
+                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                        }
+                      });
+                    }}
+                    className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-100 transition-all"
+                  >
+                    Sync Counts
+                  </button>
+                  <button 
                     onClick={async () => {
                       setConfirmModal({
                         isOpen: true,
@@ -729,19 +860,30 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
                   >
                     Seed Defaults
                   </button>
-                  <div className="flex bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="flex flex-col sm:flex-row bg-white border border-gray-200 rounded-xl overflow-hidden gap-2 p-2">
                     <input 
                       type="text" 
-                      placeholder="New category..." 
+                      placeholder="New category name..." 
                       value={newCategoryName}
                       onChange={(e) => setNewCategoryName(e.target.value)}
-                      className="px-4 py-2 text-sm focus:ring-0 border-none w-32 sm:w-48"
+                      className="px-4 py-2 text-sm focus:ring-0 border border-gray-100 rounded-lg w-full sm:w-48"
                     />
+                    <select
+                      value={newCategoryParentId}
+                      onChange={(e) => setNewCategoryParentId(e.target.value)}
+                      className="px-4 py-2 text-sm focus:ring-0 border border-gray-100 rounded-lg w-full sm:w-48 bg-white font-medium text-gray-600"
+                    >
+                      <option value="">Main Category (No Parent)</option>
+                      {categories.filter(c => !c.parent_id).map(c => (
+                        <option key={c.id} value={c.id}>Parent: {c.name}</option>
+                      ))}
+                    </select>
                     <button 
                       onClick={handleAddCategory}
-                      className="bg-emerald-500 text-white px-4 flex items-center justify-center hover:bg-emerald-600 transition-all"
+                      className="bg-emerald-500 text-white px-6 py-2 rounded-lg flex items-center justify-center hover:bg-emerald-600 transition-all font-bold"
                     >
-                      <Plus className="w-5 h-5" />
+                      <Plus className="w-5 h-5 mr-2" />
+                      Add
                     </button>
                   </div>
                 </div>
@@ -752,30 +894,62 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
                   <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {categories.map((cat) => (
-                    <div key={cat.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
-                      <div className="flex justify-between items-start">
+                <div className="space-y-8">
+                  {categories.filter(c => !c.parent_id).map((mainCat) => (
+                    <div key={mainCat.id} className="space-y-4">
+                      <div className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border border-gray-100">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-2xl">
-                            {cat.icon}
+                          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm">
+                            {mainCat.icon}
                           </div>
                           <div>
-                            <h3 className="font-bold text-gray-900">{cat.name}</h3>
-                            <p className="text-xs text-gray-400 font-medium">{cat.count} Listings</p>
+                            <h3 className="font-black text-gray-900 uppercase tracking-tight">{mainCat.name}</h3>
+                            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">{mainCat.count} Total Listings</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1">
                           <button className="p-2 text-gray-400 hover:text-emerald-500 transition-all">
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={() => handleDeleteCategory(cat.id)}
+                            onClick={() => handleDeleteCategory(mainCat.id)}
                             className="p-2 text-gray-400 hover:text-red-500 transition-all"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pl-4 sm:pl-8">
+                        {categories.filter(c => String(c.parent_id) === String(mainCat.id)).map((subCat) => (
+                          <div key={subCat.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-3">
+                                <span className="text-lg">{subCat.icon}</span>
+                                <span className="text-sm font-bold text-gray-700">{subCat.name}</span>
+                              </div>
+                              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                  onClick={() => handleDeleteCategory(subCat.id)}
+                                  className="p-1.5 text-gray-400 hover:text-red-500 transition-all"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <button 
+                          onClick={() => {
+                            setNewCategoryParentId(String(mainCat.id));
+                            // Focus the input if possible, or just scroll to top
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="border-2 border-dashed border-gray-200 p-4 rounded-2xl flex items-center justify-center gap-2 text-gray-400 hover:border-emerald-500 hover:text-emerald-500 transition-all group"
+                        >
+                          <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                          <span className="text-xs font-bold uppercase tracking-widest">Add Sub</span>
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -875,6 +1049,13 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
                                 {report.status === 'pending' && (
                                   <>
                                     <button 
+                                      onClick={() => handleUpdateStatus(report.listing_id, 'rejected')}
+                                      className="p-2 text-orange-500 hover:bg-orange-50 rounded-lg transition-all"
+                                      title="Unlist Listing"
+                                    >
+                                      <XCircle className="w-5 h-5" />
+                                    </button>
+                                    <button 
                                       onClick={() => handleUpdateReportStatus(report.id, 'resolved')}
                                       className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"
                                       title="Mark as Resolved"
@@ -922,13 +1103,107 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
               animate={{ opacity: 1, x: 0 }}
               className="space-y-6"
             >
-              <h2 className="text-2xl lg:text-3xl font-black text-gray-900">User Management</h2>
-              <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden p-8 lg:p-12 text-center space-y-4">
-                <div className="w-16 h-16 lg:w-20 lg:h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto">
-                  <Users className="w-8 h-8 lg:w-10 lg:h-10 text-gray-300" />
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <h2 className="text-2xl lg:text-3xl font-black text-gray-900">User Management</h2>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={fetchUsers}
+                    className="bg-white border border-gray-200 px-4 py-2 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all"
+                  >
+                    Refresh
+                  </button>
                 </div>
-                <h3 className="text-lg lg:text-xl font-bold text-gray-900">User Management Module</h3>
-                <p className="text-gray-500 max-w-md mx-auto text-sm lg:text-base">This section is currently under development. Soon you will be able to manage user accounts, permissions, and activity logs.</p>
+              </div>
+
+              <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden">
+                {isLoadingUsers ? (
+                  <div className="flex justify-center py-20">
+                    <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                ) : users.length === 0 ? (
+                  <div className="text-center py-20">
+                    <Users className="w-12 h-12 text-gray-200 mx-auto mb-4" />
+                    <h3 className="text-lg font-bold text-gray-900">No users found</h3>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto scrollbar-hide">
+                    <table className="w-full text-left min-w-[800px]">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">User</th>
+                          <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Role</th>
+                          <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
+                          <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Joined</th>
+                          <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {users.map((user) => (
+                          <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                                  {user.avatar_url ? (
+                                    <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Users className="w-5 h-5 text-gray-400" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold text-gray-900 truncate max-w-[200px]">{user.full_name}</p>
+                                  <p className="text-[10px] text-gray-400 truncate max-w-[200px]">{user.email}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${
+                                user.role === 'admin' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'
+                              }`}>
+                                {user.role}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${
+                                user.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                              }`}>
+                                {user.status || 'active'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <p className="text-xs text-gray-500 font-medium">
+                                {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                              </p>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center justify-end gap-2">
+                                {user.status === 'blocked' || user.status === 'banned' ? (
+                                  <button 
+                                    onClick={() => handleUpdateUserStatus(user.id, 'active')}
+                                    className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"
+                                    title="Unblock User"
+                                  >
+                                    <CheckCircle2 className="w-5 h-5" />
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleBanUser(user.id)}
+                                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                    title="Block User"
+                                  >
+                                    <UserX className="w-5 h-5" />
+                                  </button>
+                                )}
+                                <button className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-all">
+                                  <MoreVertical className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}

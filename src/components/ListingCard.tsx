@@ -20,7 +20,7 @@ interface ListingCardProps {
   onFavorite?: (e: React.MouseEvent) => void;
 }
 
-export const ListingCard = ({ title, price, location, image, category, categoryIcon, isPromoted, isFavorited, viewMode = 'list', onClick, onFavorite }: ListingCardProps) => {
+export const ListingCard = ({ title, price, location, image, category, categoryIcon, isPromoted, isFavorited, viewMode = 'grid', onClick, onFavorite }: ListingCardProps) => {
   const optimizedImage = getOptimizedImageUrl(image, { 
     width: viewMode === 'grid' ? 300 : 200,
     height: viewMode === 'grid' ? 225 : 150

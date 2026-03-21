@@ -1,10 +1,11 @@
-import { useState, useEffect, FormEvent } from 'react';
-import { User, Phone, Mail, Camera, Loader2, CheckCircle2, AlertCircle, LogOut, ArrowLeft, Trash2 } from 'lucide-react';
+import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import { User, Phone, Mail, Camera, Loader2, CheckCircle2, AlertCircle, LogOut, ArrowLeft, Trash2, MapPin } from 'lucide-react';
 import { motion } from 'motion/react';
 import { api, UserProfile } from '../services/api';
 import { supabase } from '../lib/supabase';
 import { getOptimizedImageUrl } from '../lib/imageUtils';
 import { ConfirmationModal } from './ConfirmationModal';
+import { ETHIOPIAN_LOCATIONS } from '../constants/locations';
 
 interface ProfileViewProps {
   onLogout: () => void;
@@ -21,7 +22,10 @@ export const ProfileView = ({ onLogout, onBack }: ProfileViewProps) => {
   // Form state
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState('');
+  const [selectedSubRegion, setSelectedSubRegion] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -44,11 +48,57 @@ export const ProfileView = ({ onLogout, onBack }: ProfileViewProps) => {
       setFullName(data.full_name || '');
       setPhone(data.phone || '');
       setAvatarUrl(data.avatar_url || '');
+      
+      if (data.location) {
+        if (data.location.includes(', ')) {
+          const [region, subRegion] = data.location.split(', ');
+          setSelectedRegion(region);
+          setSelectedSubRegion(subRegion);
+        } else {
+          setSelectedRegion(data.location);
+          setSelectedSubRegion('');
+        }
+      }
     } catch (err) {
       console.error('Error fetching profile:', err);
       setError('Failed to load profile. Please try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAvatarUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload an image file.');
+      return;
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image size must be less than 5MB.');
+      return;
+    }
+
+    setIsUploading(true);
+    setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Unauthorized');
+
+      const updatedProfile = await api.users.uploadAvatar(file, session.access_token);
+      setProfile(updatedProfile);
+      setAvatarUrl(updatedProfile.avatar_url || '');
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err) {
+      console.error('Error uploading avatar:', err);
+      setError('Failed to upload profile picture. Please try again.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -62,10 +112,14 @@ export const ProfileView = ({ onLogout, onBack }: ProfileViewProps) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Unauthorized');
 
+      const locationString = selectedSubRegion 
+        ? `${selectedRegion}, ${selectedSubRegion}` 
+        : selectedRegion;
+
       const updatedProfile = await api.users.updateMe({
         full_name: fullName,
         phone: phone,
-        avatar_url: avatarUrl
+        location: locationString
       }, session.access_token);
 
       setProfile(updatedProfile);
@@ -137,7 +191,11 @@ export const ProfileView = ({ onLogout, onBack }: ProfileViewProps) => {
             <div className="relative group">
               <div className="w-24 h-24 rounded-[2rem] bg-white p-1 shadow-xl">
                 <div className="w-full h-full rounded-[1.8rem] overflow-hidden bg-gray-100">
-                  {avatarUrl ? (
+                  {isUploading ? (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                      <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+                    </div>
+                  ) : avatarUrl ? (
                     <img 
                       src={getOptimizedImageUrl(avatarUrl, { width: 200, height: 200 })} 
                       alt="Profile" 
@@ -150,9 +208,16 @@ export const ProfileView = ({ onLogout, onBack }: ProfileViewProps) => {
                   )}
                 </div>
               </div>
-              <button className="absolute bottom-0 right-0 w-8 h-8 bg-white rounded-xl shadow-lg flex items-center justify-center text-gray-600 hover:text-emerald-500 transition-all border border-gray-100">
+              <label className="absolute bottom-0 right-0 w-8 h-8 bg-white rounded-xl shadow-lg flex items-center justify-center text-gray-600 hover:text-emerald-500 transition-all border border-gray-100 cursor-pointer">
                 <Camera className="w-4 h-4" />
-              </button>
+                <input 
+                  type="file" 
+                  className="hidden" 
+                  accept="image/*"
+                  onChange={handleAvatarUpload}
+                  disabled={isUploading}
+                />
+              </label>
             </div>
           </div>
         </div>
@@ -204,18 +269,59 @@ export const ProfileView = ({ onLogout, onBack }: ProfileViewProps) => {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Profile Picture URL</label>
-                <div className="relative">
-                  <Camera className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input 
-                    type="url"
-                    value={avatarUrl}
-                    onChange={(e) => setAvatarUrl(e.target.value)}
-                    placeholder="Enter image URL"
-                    className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-                  />
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Region</label>
+                <div className="relative group">
+                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                  <select
+                    required
+                    className="w-full pl-12 pr-10 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold text-gray-900 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all appearance-none cursor-pointer"
+                    value={selectedRegion}
+                    onChange={(e) => {
+                      setSelectedRegion(e.target.value);
+                      setSelectedSubRegion('');
+                    }}
+                  >
+                    <option value="">Select Region</option>
+                    {ETHIOPIAN_LOCATIONS.map((loc) => (
+                      <option key={loc.name} value={loc.name}>
+                        {loc.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </div>
               </div>
+
+              {selectedRegion && ETHIOPIAN_LOCATIONS.find(l => l.name === selectedRegion)?.subRegions && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Sub-Region / City</label>
+                  <div className="relative group">
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                    <select
+                      required
+                      className="w-full pl-12 pr-10 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold text-gray-900 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all appearance-none cursor-pointer"
+                      value={selectedSubRegion}
+                      onChange={(e) => setSelectedSubRegion(e.target.value)}
+                    >
+                      <option value="">Select Sub-Region / City</option>
+                      {ETHIOPIAN_LOCATIONS.find(l => l.name === selectedRegion)?.subRegions?.map((sub) => (
+                        <option key={sub} value={sub}>
+                          {sub}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2 opacity-60">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email Address (Read-only)</label>

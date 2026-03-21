@@ -129,6 +129,57 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/favorites', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !supabase) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { data, error } = await supabase
+      .from('favorites')
+      .select(`
+        listing_id,
+        listing:listings(
+          *,
+          seller:profiles(*),
+          category_data:categories(name, icon, parent:categories!parent_id(name)),
+          listing_images(image_url)
+        )
+      `)
+      .eq('user_id', user.id);
+
+    if (error) throw error;
+
+    const mappedData = (data || [])
+      .filter((item: any) => item.listing) // Filter out orphaned favorites
+      .map((item: any) => {
+        const listing = item.listing;
+        return {
+          ...listing,
+          image: listing.thumbnail_url,
+          images: listing.listing_images?.map((img: any) => img.image_url) || [listing.thumbnail_url],
+          isPromoted: listing.is_promoted,
+          category: listing.category_data?.name || listing.category,
+          categoryIcon: listing.category_data?.icon,
+          isFavorited: true
+        };
+      });
+
+    res.json(mappedData);
+  } catch (error) {
+    console.error('Error fetching favorites:', error);
+    res.status(500).json({ error: 'Failed to fetch favorites' });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -189,54 +240,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.get('/favorites', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !supabase) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const token = authHeader.split(' ')[1];
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
-    if (authError || !user) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const { data, error } = await supabase
-      .from('favorites')
-      .select(`
-        listing_id,
-        listing:listings(
-          *,
-          seller:profiles(*),
-          category_data:categories(name, icon),
-          listing_images(image_url)
-        )
-      `)
-      .eq('user_id', user.id);
-
-    if (error) throw error;
-
-    const mappedData = (data || []).map((item: any) => {
-      const listing = item.listing;
-      return {
-        ...listing,
-        image: listing.thumbnail_url,
-        images: listing.listing_images?.map((img: any) => img.image_url) || [listing.thumbnail_url],
-        isPromoted: listing.is_promoted,
-        category: listing.category_data?.name || listing.category,
-        categoryIcon: listing.category_data?.icon,
-        isFavorited: true
-      };
-    });
-
-    res.json(mappedData);
-  } catch (error) {
-    console.error('Error fetching favorites:', error);
-    res.status(500).json({ error: 'Failed to fetch favorites' });
-  }
-});
 
 router.post('/:id/favorite', async (req, res) => {
   try {
@@ -259,27 +262,31 @@ router.post('/:id/favorite', async (req, res) => {
     }
 
     // Check if already favorited
-    const { data: existing } = await supabase
+    const { data: existing, error: checkError } = await supabase
       .from('favorites')
       .select('id')
       .eq('user_id', user.id)
       .eq('listing_id', id)
-      .single();
+      .maybeSingle();
+
+    if (checkError) throw checkError;
 
     if (existing) {
       // Unfavorite
-      await supabase
+      const { error: deleteError } = await supabase
         .from('favorites')
         .delete()
         .eq('id', existing.id);
       
+      if (deleteError) throw deleteError;
       return res.json({ favorited: false });
     } else {
       // Favorite
-      await supabase
+      const { error: insertError } = await supabase
         .from('favorites')
         .insert([{ user_id: user.id, listing_id: id }]);
       
+      if (insertError) throw insertError;
       return res.json({ favorited: true });
     }
   } catch (error) {
@@ -332,6 +339,36 @@ router.post('/', async (req, res) => {
 
     if (listingError) throw listingError;
 
+    // Increment category count
+    if (category_id && isUuid) {
+      try {
+        // Increment sub-category count
+        await supabase.rpc('increment_category_count', { cat_id: category_id });
+        
+        // Get parent_id to increment parent count too
+        const { data: catData } = await supabase
+          .from('categories')
+          .select('parent_id')
+          .eq('id', category_id)
+          .single();
+        
+        if (catData?.parent_id) {
+          await supabase.rpc('increment_category_count', { cat_id: catData.parent_id });
+        }
+      } catch (err) {
+        console.error('Error incrementing category count:', err);
+        // Fallback if RPC doesn't exist
+        const { data: currentCat } = await supabase.from('categories').select('count').eq('id', category_id).single();
+        await supabase.from('categories').update({ count: (currentCat?.count || 0) + 1 }).eq('id', category_id);
+        
+        const { data: catData } = await supabase.from('categories').select('parent_id').eq('id', category_id).single();
+        if (catData?.parent_id) {
+          const { data: parentCat } = await supabase.from('categories').select('count').eq('id', catData.parent_id).single();
+          await supabase.from('categories').update({ count: (parentCat?.count || 0) + 1 }).eq('id', catData.parent_id);
+        }
+      }
+    }
+
     // Insert additional images if provided
     if (images && Array.isArray(images) && images.length > 0) {
       const imageInserts = images.map((url, index) => ({
@@ -381,7 +418,7 @@ router.patch('/:id', async (req, res) => {
     // Check if user is the owner or an admin
     const { data: listing, error: fetchError } = await supabase
       .from('listings')
-      .select('seller_id')
+      .select('seller_id, status')
       .eq('id', id)
       .single();
 
@@ -420,6 +457,36 @@ router.patch('/:id', async (req, res) => {
         updates.category_id = category_id;
       } else if (category_id === null || category_id === '') {
         updates.category_id = null;
+      }
+    }
+
+    // Handle status change for category counts
+    if (listingData.status && listingData.status !== listing.status) {
+      const { data: currentListing } = await supabase.from('listings').select('category_id, status').eq('id', id).single();
+      if (currentListing?.category_id) {
+        const isBecomingInactive = (listingData.status === 'sold' || listingData.status === 'deleted' || listingData.status === 'rejected') && currentListing.status === 'active';
+        const isBecomingActive = listingData.status === 'active' && (currentListing.status === 'sold' || currentListing.status === 'deleted' || currentListing.status === 'rejected');
+        
+        if (isBecomingInactive || isBecomingActive) {
+          const increment = isBecomingActive ? 1 : -1;
+          try {
+            await supabase.rpc('adjust_category_count', { cat_id: currentListing.category_id, amount: increment });
+            const { data: catData } = await supabase.from('categories').select('parent_id').eq('id', currentListing.category_id).single();
+            if (catData?.parent_id) {
+              await supabase.rpc('adjust_category_count', { cat_id: catData.parent_id, amount: increment });
+            }
+          } catch (err) {
+            // Fallback
+            const { data: cat } = await supabase.from('categories').select('count').eq('id', currentListing.category_id).single();
+            await supabase.from('categories').update({ count: Math.max(0, (cat?.count || 0) + increment) }).eq('id', currentListing.category_id);
+            
+            const { data: catData } = await supabase.from('categories').select('parent_id').eq('id', currentListing.category_id).single();
+            if (catData?.parent_id) {
+              const { data: pCat } = await supabase.from('categories').select('count').eq('id', catData.parent_id).single();
+              await supabase.from('categories').update({ count: Math.max(0, (pCat?.count || 0) + increment) }).eq('id', catData.parent_id);
+            }
+          }
+        }
       }
     }
 
@@ -492,12 +559,33 @@ router.delete('/:id', async (req, res) => {
     // Check if user is the owner or an admin
     const { data: listing, error: fetchError } = await supabase
       .from('listings')
-      .select('seller_id')
+      .select('seller_id, category_id, status')
       .eq('id', id)
       .single();
 
     if (fetchError || !listing) {
       return res.status(404).json({ error: 'Listing not found' });
+    }
+
+    // Decrement category count if active
+    if (listing.category_id && listing.status === 'active') {
+      try {
+        await supabase.rpc('adjust_category_count', { cat_id: listing.category_id, amount: -1 });
+        const { data: catData } = await supabase.from('categories').select('parent_id').eq('id', listing.category_id).single();
+        if (catData?.parent_id) {
+          await supabase.rpc('adjust_category_count', { cat_id: catData.parent_id, amount: -1 });
+        }
+      } catch (err) {
+        // Fallback
+        const { data: cat } = await supabase.from('categories').select('count').eq('id', listing.category_id).single();
+        await supabase.from('categories').update({ count: Math.max(0, (cat?.count || 0) - 1) }).eq('id', listing.category_id);
+        
+        const { data: catData } = await supabase.from('categories').select('parent_id').eq('id', listing.category_id).single();
+        if (catData?.parent_id) {
+          const { data: pCat } = await supabase.from('categories').select('count').eq('id', catData.parent_id).single();
+          await supabase.from('categories').update({ count: Math.max(0, (pCat?.count || 0) - 1) }).eq('id', catData.parent_id);
+        }
+      }
     }
 
     if (listing.seller_id !== user.id) {

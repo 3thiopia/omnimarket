@@ -11,7 +11,7 @@ export interface Listing {
   categoryIcon?: string;
   sellerName?: string;
   postedAt?: string;
-  status?: 'pending' | 'approved' | 'rejected';
+  status?: 'active' | 'sold' | 'pending' | 'rejected';
   views?: number;
   isFavorited?: boolean;
 }

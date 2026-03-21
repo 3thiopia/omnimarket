@@ -149,7 +149,7 @@ export const MyListings = ({ onBack, onViewProduct, onEditProfile }: MyListingsP
         <h3 className="text-xl font-bold text-gray-900 mb-2">Oops!</h3>
         <p className="text-gray-500 mb-6">{error}</p>
         <button 
-          onClick={fetchMyListings}
+          onClick={activeSubTab === 'my-items' ? fetchMyListings : fetchFavorites}
           className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-600 transition-all"
         >
           Try Again
@@ -306,7 +306,7 @@ export const MyListings = ({ onBack, onViewProduct, onEditProfile }: MyListingsP
             <p className="text-gray-500 max-w-xs mx-auto">Items you heart will appear here. Start browsing!</p>
           </div>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <AnimatePresence mode="popLayout">
               {favorites.map((listing) => (
                 <ListingCard 
@@ -319,7 +319,7 @@ export const MyListings = ({ onBack, onViewProduct, onEditProfile }: MyListingsP
                   categoryIcon={listing.categoryIcon}
                   isPromoted={listing.isPromoted}
                   isFavorited={true}
-                  viewMode="list"
+                  viewMode="grid"
                   onClick={() => onViewProduct(listing)}
                   onFavorite={() => handleToggleFavorite(listing.id)}
                 />

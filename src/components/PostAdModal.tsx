@@ -40,6 +40,29 @@ export const PostAdModal = ({ isOpen, onClose, onSuccess, editListing }: PostAdM
 
   // Reset form when editListing changes or modal opens
   useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const profile = await api.users.getMe(session.access_token);
+          if (profile.location) {
+            setFormData(prev => ({ ...prev, location: profile.location }));
+            
+            if (profile.location.includes(', ')) {
+              const [region, subRegion] = profile.location.split(', ');
+              setSelectedRegion(region);
+              setSelectedSubRegion(subRegion);
+            } else {
+              setSelectedRegion(profile.location);
+              setSelectedSubRegion('');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching user profile for default location:', err);
+      }
+    };
+
     if (isOpen) {
       if (editListing) {
         setFormData({
@@ -86,6 +109,7 @@ export const PostAdModal = ({ isOpen, onClose, onSuccess, editListing }: PostAdM
         setSelectedSubCategory('');
         setPreviews([]);
         setSelectedFiles([]);
+        fetchUserProfile();
       }
     }
   }, [isOpen, editListing, categories]);
@@ -231,7 +255,25 @@ export const PostAdModal = ({ isOpen, onClose, onSuccess, editListing }: PostAdM
       }
 
       // 2. Create or Update listing in database
-      const selectedCategory = categories.find(c => String(c.id) === formData.category);
+      let categoryName = '';
+      let categoryId = '';
+
+      if (selectedSubCategory === 'other') {
+        const parent = categories.find(c => String(c.id) === selectedMainCategory);
+        categoryName = `Other ${parent?.name || 'Uncategorized'}`;
+        categoryId = selectedMainCategory; // Use parent ID as fallback
+      } else {
+        const subCat = categories.find(c => String(c.id) === selectedSubCategory);
+        const mainCat = categories.find(c => String(c.id) === selectedMainCategory);
+        
+        if (subCat) {
+          categoryName = subCat.name;
+          categoryId = String(subCat.id);
+        } else if (mainCat) {
+          categoryName = mainCat.name;
+          categoryId = String(mainCat.id);
+        }
+      }
       
       const listingPayload: any = {
         title: formData.title,
@@ -240,8 +282,8 @@ export const PostAdModal = ({ isOpen, onClose, onSuccess, editListing }: PostAdM
         image: imageUrls[0], // Primary thumbnail
         images: imageUrls,   // All images for gallery
         description: formData.description,
-        category: selectedCategory?.name || '',
-        category_id: formData.category,
+        category: categoryName,
+        category_id: categoryId,
       };
 
       if (editListing) {
@@ -345,72 +387,69 @@ export const PostAdModal = ({ isOpen, onClose, onSuccess, editListing }: PostAdM
                 <div className="space-y-4">
                   <label className="block text-sm font-bold text-gray-700 uppercase tracking-wider">1. Select Category</label>
                   
-                  {/* Main Categories */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {categoriesLoading ? (
-                      Array(6).fill(0).map((_, i) => (
-                        <div key={i} className="h-16 bg-gray-50 animate-pulse rounded-2xl border-2 border-transparent" />
-                      ))
-                    ) : (
-                      categories.filter(c => !c.parent_id).map((cat) => (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedMainCategory(String(cat.id));
-                            setSelectedSubCategory(''); // Reset sub-category
-                          }}
-                          className={`flex flex-col items-center justify-center gap-1 p-4 rounded-2xl border-2 transition-all text-center group ${
-                            selectedMainCategory === String(cat.id)
-                              ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
-                              : 'border-gray-50 bg-gray-50 text-gray-500 hover:border-gray-200 hover:bg-white'
-                          }`}
-                        >
-                          <span className={`text-2xl transition-transform ${selectedMainCategory === String(cat.id) ? 'scale-110' : 'group-hover:scale-110'}`}>
-                            {cat.icon}
-                          </span>
-                          <span className="text-[10px] font-black uppercase tracking-tight truncate w-full">
-                            {cat.name}
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-
-                  {/* Sub Categories */}
-                  <AnimatePresence>
-                    {selectedMainCategory && categories.some(c => String(c.parent_id) === selectedMainCategory) && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="space-y-4 pt-4 border-t border-gray-100 overflow-hidden"
+                  <div className="space-y-4">
+                    {/* Main Category Dropdown */}
+                    <div className="relative group">
+                      <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                      <select
+                        required
+                        className="w-full pl-12 pr-10 py-4 bg-gray-50 border-2 border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl outline-none transition-all font-medium appearance-none cursor-pointer"
+                        value={selectedMainCategory}
+                        onChange={(e) => {
+                          setSelectedMainCategory(e.target.value);
+                          setSelectedSubCategory(''); // Reset sub-category
+                        }}
+                        disabled={categoriesLoading}
                       >
-                        <div className="flex items-center justify-between">
-                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Select Sub-Category</label>
-                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">Required</span>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                          {categories
-                            .filter(c => String(c.parent_id) === selectedMainCategory)
-                            .map((sub) => (
-                              <button
-                                key={sub.id}
-                                type="button"
-                                onClick={() => setSelectedSubCategory(String(sub.id))}
-                                className={`px-3 py-3 rounded-xl text-[11px] font-bold transition-all border-2 text-center ${
-                                  selectedSubCategory === String(sub.id)
-                                    ? 'border-emerald-500 bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                                    : 'border-gray-50 bg-gray-50 text-gray-600 hover:border-gray-200 hover:bg-white'
-                                }`}
-                              >
-                                {sub.name}
-                              </button>
-                            ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                        <option value="">{categoriesLoading ? 'Loading categories...' : 'Select Main Category'}</option>
+                        {categories.filter(c => !c.parent_id).map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.icon} {cat.name}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Sub Category Dropdown */}
+                    <AnimatePresence>
+                      {selectedMainCategory && categories.some(c => String(c.parent_id) === selectedMainCategory) && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="relative group"
+                        >
+                          <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                          <select
+                            required
+                            className="w-full pl-12 pr-10 py-4 bg-gray-50 border-2 border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl outline-none transition-all font-medium appearance-none cursor-pointer"
+                            value={selectedSubCategory}
+                            onChange={(e) => setSelectedSubCategory(e.target.value)}
+                          >
+                            <option value="">Select Sub-Category</option>
+                            {categories
+                              .filter(c => String(c.parent_id) === selectedMainCategory)
+                              .map((sub) => (
+                                <option key={sub.id} value={sub.id}>
+                                  {sub.icon} {sub.name}
+                                </option>
+                              ))}
+                            <option value="other">Other / Uncategorized</option>
+                          </select>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
 
                   {categories.length === 0 && !categoriesLoading && (
                     <div className="p-6 bg-amber-50 rounded-3xl border border-amber-100 flex flex-col items-center gap-3 text-center">

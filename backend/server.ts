@@ -1,25 +1,30 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
+import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import categoryRoutes from "./server/routes/categories";
-import listingRoutes from "./server/routes/listings";
-import statsRoutes from "./server/routes/stats";
-import userRoutes from "./server/routes/users";
-import chatRoutes from "./server/routes/chats";
-import reportRoutes from "./server/routes/reports";
-import notificationRoutes from "./server/routes/notifications";
-import { supabase } from "./server/lib/supabase";
+import categoryRoutes from "./src/routes/categories";
+import listingRoutes from "./src/routes/listings";
+import statsRoutes from "./src/routes/stats";
+import userRoutes from "./src/routes/users";
+import chatRoutes from "./src/routes/chats";
+import reportRoutes from "./src/routes/reports";
+import notificationRoutes from "./src/routes/notifications";
+import reviewRoutes from "./src/routes/reviews";
+import { supabase } from "./src/lib/supabase";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
-  console.log("Starting server...");
+  console.log("Starting backend server...");
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3001;
 
   // Middleware
+  app.use(cors({
+    origin: ["http://localhost:3000", "https://*.vercel.app"], // Allow local dev and Vercel
+    credentials: true
+  }));
   app.use(express.json());
 
   // API Routes
@@ -65,28 +70,16 @@ async function startServer() {
   // Notification Routes
   app.use("/api/notifications", notificationRoutes);
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    // Serve static files in production
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+  // Review Routes
+  app.use("/api/reviews", reviewRoutes);
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`[BACKEND] Server running on port ${PORT}`);
+    console.log(`[BACKEND] Health check: http://localhost:${PORT}/api/health`);
   });
 }
 
 startServer().catch(err => {
-  console.error("Failed to start server:", err);
+  console.error("Failed to start backend server:", err);
   process.exit(1);
 });
