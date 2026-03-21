@@ -51,8 +51,6 @@ export interface UserProfile {
   phone?: string;
   location?: string;
   role: string;
-  status?: string;
-  created_at?: string;
 }
 
 export interface Report {
@@ -279,10 +277,7 @@ export const api = {
       const response = await fetch('/api/users', {
         headers: { 'Authorization': `Bearer ${token}` },
       });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to fetch users' }));
-        throw new Error(errorData.error || 'Failed to fetch users');
-      }
+      if (!response.ok) throw new Error('Failed to fetch users');
       return response.json();
     },
     getById: async (id: string): Promise<UserProfile> => {

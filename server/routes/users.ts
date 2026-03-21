@@ -27,54 +27,30 @@ router.get('/', async (req, res) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
-    if (authError || !user) {
-      console.error('Auth error in users route:', authError);
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    const { data: { user } } = await supabase.auth.getUser(token);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
     // Check if user is admin
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from('profiles')
-      .select('role, email')
+      .select('role')
       .eq('id', user.id)
       .single();
 
-    if (profileError) {
-      console.error('Profile error in users route:', profileError);
-    }
-
-    // Allow the specific user email to be treated as admin for debugging
-    const isAdmin = profile?.role === 'admin' || user.email === 'Binyamawiw@gmail.com';
-
-    if (!isAdmin) {
-      console.warn(`User ${user.email} attempted to access admin users list without admin role.`);
+    if (profile?.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden: Admin access required' });
     }
 
-    console.log('Fetching all users for admin:', user.email);
     const { data: profiles, error } = await supabase
       .from('profiles')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Database error fetching profiles:', error);
-      return res.status(500).json({ 
-        error: 'Database error fetching profiles', 
-        details: error.message,
-        code: error.code
-      });
-    }
-    
+    if (error) throw error;
     res.json(profiles);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching users:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch users',
-      details: error.message
-    });
+    res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
 
@@ -108,54 +84,11 @@ router.get('/me', async (req, res) => {
       .eq('id', user.id)
       .single();
 
-    if (profileError && profileError.code !== 'PGRST116') {
-      console.error('Error fetching profile:', profileError);
-      throw profileError;
-    }
-
-    // Auto-promote the specific user to admin if they are not already
-    if (user.email === 'Binyamawiw@gmail.com' && profile?.role !== 'admin') {
-      console.log('Auto-promoting user to admin:', user.email);
-      const { data: updatedProfile, error: updateError } = await supabase
-        .from('profiles')
-        .update({ role: 'admin' })
-        .eq('id', user.id)
-        .select()
-        .single();
-      
-      if (!updateError && updatedProfile) {
-        return res.json(updatedProfile);
-      }
-      if (updateError) {
-        console.error('Error auto-promoting user:', updateError);
-      }
-    }
-
-    if (!profile) {
-      // Create profile if it doesn't exist (fallback for trigger failures)
-      const { data: newProfile, error: createError } = await supabase
-        .from('profiles')
-        .insert({
-          id: user.id,
-          full_name: user.user_metadata?.full_name || user.user_metadata?.name || 'New User',
-          email: user.email,
-          role: user.email === 'Binyamawiw@gmail.com' ? 'admin' : 'user',
-          status: 'active'
-        })
-        .select()
-        .single();
-      
-      if (createError) {
-        console.error('Error creating profile fallback:', createError);
-        throw createError;
-      }
-      return res.json(newProfile);
-    }
-
+    if (profileError) throw profileError;
     res.json(profile);
-  } catch (error: any) {
-    console.error('Error in /me route:', error);
-    res.status(500).json({ error: 'Failed to fetch profile', details: error.message });
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
 

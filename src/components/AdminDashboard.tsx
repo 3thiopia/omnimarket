@@ -108,9 +108,9 @@ export const AdminDashboard = ({ listings, onBack }: AdminDashboardProps) => {
       if (!session) return;
       const data = await api.users.getAll(session.access_token);
       setUsers(data);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error loading users:', error);
-      toast.error(error.message || 'Failed to load users');
+      toast.error('Failed to load users');
     } finally {
       setIsLoadingUsers(false);
     }
