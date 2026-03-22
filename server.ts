@@ -24,9 +24,9 @@ async function startServer() {
   app.use(express.json());
   
   app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: true,
+  credentials: true,
   }));
-
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", message: "Server is running!" });
