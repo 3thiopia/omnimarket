@@ -29,6 +29,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'items' | 'sell' | 'profile' | 'messages'>('home');
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingConversationId, setPendingConversationId] = useState<string | null>(null);
@@ -41,6 +42,12 @@ export default function App() {
   const [regionFilter, setRegionFilter] = useState<string>('');
   const [subRegionFilter, setSubRegionFilter] = useState<string>('');
   const [isDeletingListing, setIsDeletingListing] = useState<string | number | null>(null);
+
+  useEffect(() => {
+    if (isAdminView && userProfile && userProfile.role !== 'admin') {
+      setIsAdminView(false);
+    }
+  }, [isAdminView, userProfile]);
 
   useEffect(() => {
     fetchListings();
@@ -56,8 +63,10 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setUser({ ...session.user, token: session.access_token });
+        fetchUserProfile(session.access_token);
       } else {
         setUser(null);
+        setUserProfile(null);
       }
     });
 
@@ -65,13 +74,25 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setUser({ ...session.user, token: session.access_token });
+        fetchUserProfile(session.access_token);
       } else {
         setUser(null);
+        setUserProfile(null);
+        setIsAdminView(false);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUserProfile = async (token: string) => {
+    try {
+      const profile = await api.users.getMe(token);
+      setUserProfile(profile);
+    } catch (err) {
+      console.error('Error fetching user profile:', err);
+    }
+  };
 
   const fetchUnreadCount = async () => {
     try {
@@ -334,14 +355,18 @@ export default function App() {
 
             {/* Actions */}
             <div className="flex items-center gap-2 sm:gap-4">
-              <button 
-                onClick={() => setIsAdminView(true)}
-                className="text-gray-400 hover:text-emerald-500 transition-colors flex items-center gap-1 font-medium text-xs sm:text-sm"
-              >
-                <Settings className="w-4 h-4" />
-                <span className="hidden xs:inline">Admin</span>
-              </button>
-              <div className="h-6 w-[1px] bg-gray-200 hidden sm:block"></div>
+              {userProfile?.role === 'admin' && (
+                <>
+                  <button 
+                    onClick={() => setIsAdminView(true)}
+                    className="text-gray-400 hover:text-emerald-500 transition-colors flex items-center gap-1 font-medium text-xs sm:text-sm"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span className="hidden xs:inline">Admin</span>
+                  </button>
+                  <div className="h-6 w-[1px] bg-gray-200 hidden sm:block"></div>
+                </>
+              )}
               
               {user ? (
                 <div className="flex items-center gap-2 sm:gap-4">
@@ -383,7 +408,7 @@ export default function App() {
     )}
       
       <main className={`${viewMode === 'grid' ? 'max-w-7xl' : 'max-w-3xl'} mx-auto pb-20 lg:pb-0 px-4 transition-all duration-500`}>
-        {isAdminView ? (
+        {isAdminView && userProfile?.role === 'admin' ? (
           <AdminDashboard 
             listings={listings} 
             onBack={() => setIsAdminView(false)} 
@@ -608,7 +633,7 @@ export default function App() {
             </div>
           </div>
           
-          <div className={`grid gap-3 sm:gap-4 ${viewMode === 'grid' ? 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-4' : 'flex flex-col'}`}>
+          <div className={`grid gap-3 sm:gap-4 ${viewMode === 'grid' ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5' : 'flex flex-col'}`}>
             {isLoading ? (
               <div className="flex justify-center py-20 col-span-full">
                 <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>

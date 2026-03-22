@@ -107,6 +107,10 @@ export const sendPushNotification = async (userId: string, payload: any) => {
           if (err.statusCode === 410 || err.statusCode === 404) {
             // Subscription has expired or is no longer valid
             console.log(`Removing expired subscription for user ${userId}`);
+            if (!supabase) {
+              console.error('Supabase client not initialized, cannot remove expired subscription');
+              return;
+            }
             return supabase
               .from('push_subscriptions')
               .delete()

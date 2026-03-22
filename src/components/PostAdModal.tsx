@@ -10,7 +10,7 @@ interface PostAdModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
-  editListing?: Listing;
+  editListing?: Listing | null;
 }
 
 const ETHIOPIAN_REGIONS = ETHIOPIAN_LOCATIONS.map(l => l.name);
@@ -46,7 +46,7 @@ export const PostAdModal = ({ isOpen, onClose, onSuccess, editListing }: PostAdM
         if (session) {
           const profile = await api.users.getMe(session.access_token);
           if (profile.location) {
-            setFormData(prev => ({ ...prev, location: profile.location }));
+            setFormData(prev => ({ ...prev, location: profile.location || '' }));
             
             if (profile.location.includes(', ')) {
               const [region, subRegion] = profile.location.split(', ');

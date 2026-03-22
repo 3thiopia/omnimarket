@@ -464,8 +464,8 @@ router.patch('/:id', async (req, res) => {
     if (listingData.status && listingData.status !== listing.status) {
       const { data: currentListing } = await supabase.from('listings').select('category_id, status').eq('id', id).single();
       if (currentListing?.category_id) {
-        const isBecomingInactive = (listingData.status === 'sold' || listingData.status === 'deleted' || listingData.status === 'rejected') && currentListing.status === 'active';
-        const isBecomingActive = listingData.status === 'active' && (currentListing.status === 'sold' || currentListing.status === 'deleted' || currentListing.status === 'rejected');
+        const isBecomingInactive = (listingData.status === 'sold' || listingData.status === 'deleted' || listingData.status === 'hidden') && currentListing.status === 'active';
+        const isBecomingActive = listingData.status === 'active' && (currentListing.status === 'sold' || currentListing.status === 'deleted' || currentListing.status === 'hidden');
         
         if (isBecomingInactive || isBecomingActive) {
           const increment = isBecomingActive ? 1 : -1;

@@ -67,6 +67,30 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+router.patch('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, icon, parent_id } = req.body;
+    
+    if (!supabase) {
+      return res.status(200).json({ id, name, icon, parent_id });
+    }
+
+    const { data, error } = await supabase
+      .from('categories')
+      .update({ name, icon, parent_id })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    console.error('Error updating category:', error);
+    res.status(500).json({ error: 'Failed to update category' });
+  }
+});
+
 router.post('/seed', async (req, res) => {
   try {
     if (!supabase) {

@@ -275,11 +275,14 @@ router.patch('/:id/status', async (req, res) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error updating user status:', error);
+      return res.status(400).json({ error: 'Failed to update user status', details: error.message });
+    }
     res.json(updatedProfile);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating user status:', error);
-    res.status(500).json({ error: 'Failed to update user status' });
+    res.status(500).json({ error: 'Failed to update user status', details: error.message });
   }
 });
 

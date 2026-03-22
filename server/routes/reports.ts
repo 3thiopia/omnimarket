@@ -32,7 +32,7 @@ router.get('/', async (req, res) => {
       .from('reports')
       .select(`
         *,
-        listing:listings(id, title, thumbnail_url),
+        listing:listings(id, title, thumbnail_url, seller_id),
         reporter:profiles(id, full_name, email)
       `)
       .order('created_at', { ascending: false });

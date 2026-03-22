@@ -120,7 +120,7 @@ export const ShareModal = ({ isOpen, onClose, title, url }: ShareModalProps) => 
                   </button>
                 </div>
 
-                {navigator.share && (
+                {!!navigator.share && (
                   <button
                     onClick={handleWebShare}
                     className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors"
