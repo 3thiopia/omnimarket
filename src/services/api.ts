@@ -1,6 +1,6 @@
 import { getOptimizedImageUrl } from '../lib/imageUtils';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+const API_BASE_URL = import.meta.env.VITE_API_URL;
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
 
 export interface Category {
