@@ -297,7 +297,7 @@ export const api = {
       return response.json();
     },
     getById: async (id: string): Promise<UserProfile> => {
-      const response = await fetch(apiUrl(`/api/users/${id}`);
+      const response = await fetch(apiUrl(`/api/users/${id}`));
       if (!response.ok) throw new Error('Failed to fetch user');
       return response.json();
     },
